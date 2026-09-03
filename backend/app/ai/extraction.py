@@ -4,545 +4,173 @@ from typing import Optional
 from app.schemas.ai import ProjectAnalysis, Location
 
 
-# ============================================================
-# IMPACT SPHERE
-# LOCAL PROJECT INFORMATION EXTRACTION
-# ============================================================
-#
-# This extractor does NOT use OpenAI or any paid API.
-#
-# It extracts useful project information using:
-#   - regular expressions
-#   - keyword detection
-#   - simple NLP rules
-#
-# Missing information is returned as None.
-# ============================================================
+# =========================================================
+# HELPER FUNCTIONS
+# =========================================================
+
+def clean_text(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+
+    value = re.sub(r"\s+", " ", value)
+    value = value.strip(" .,:;-")
+
+    return value if value else None
 
 
-def find_first_number(patterns, text):
-    """
-    Try multiple regex patterns and return the first number found.
-    """
-
-    for pattern in patterns:
-        match = re.search(
-            pattern,
-            text,
-            re.IGNORECASE
-        )
-
-        if match:
-            try:
-                return float(
-                    match.group(1).replace(",", "")
-                )
-            except ValueError:
-                pass
-
-    return None
-
-
-def extract_budget(text: str) -> Optional[float]:
-    """
-    Extract project budget.
-
-    Examples:
-        Budget: ₹80 lakh
-        Budget: Rs. 50,00,000
-        Cost: 2 crore
-        Project cost is 5000000
-    """
-
-    # Crores
-    crore_patterns = [
-        r"(?:budget|cost|allocation|funding)[^\d₹]{0,30}"
-        r"₹?\s*([\d,.]+)\s*crore",
-
-        r"₹?\s*([\d,.]+)\s*crore"
-    ]
-
-    value = find_first_number(
-        crore_patterns,
-        text
-    )
-
-    if value is not None:
-        return value * 10_000_000
-
-    # Lakhs
-    lakh_patterns = [
-        r"(?:budget|cost|allocation|funding)[^\d₹]{0,30}"
-        r"₹?\s*([\d,.]+)\s*lakh",
-
-        r"₹?\s*([\d,.]+)\s*lakh"
-    ]
-
-    value = find_first_number(
-        lakh_patterns,
-        text
-    )
-
-    if value is not None:
-        return value * 100_000
-
-    # Direct rupee amount
-    rupee_patterns = [
-        r"(?:budget|cost|allocation|funding)[^\d]{0,30}"
-        r"₹\s*([\d,]+)",
-
-        r"(?:budget|cost|allocation|funding)[^\d]{0,30}"
-        r"Rs\.?\s*([\d,]+)"
-    ]
-
-    value = find_first_number(
-        rupee_patterns,
-        text
-    )
-
-    if value is not None:
-        return value
-
-    return None
-
-
-def extract_duration(text: str) -> Optional[int]:
-    """
-    Extract project duration in months.
-    """
-
-    match = re.search(
-        r"(\d+)\s*(?:month|months)",
-        text,
-        re.IGNORECASE
-    )
+def extract_number(pattern: str, text: str) -> Optional[int]:
+    match = re.search(pattern, text, re.IGNORECASE)
 
     if match:
-        return int(match.group(1))
-
-    # Convert years to months
-    match = re.search(
-        r"(\d+)\s*(?:year|years)",
-        text,
-        re.IGNORECASE
-    )
-
-    if match:
-        return int(match.group(1)) * 12
+        try:
+            return int(match.group(1).replace(",", ""))
+        except ValueError:
+            return None
 
     return None
 
 
-def extract_beneficiaries(text: str) -> Optional[int]:
-    """
-    Extract approximate number of beneficiaries.
+# =========================================================
+# PROJECT NAME
+# =========================================================
 
-    Examples:
-        benefit 12,000 people
-        reach 5000 beneficiaries
-        beneficiaries: 3000
-    """
+def extract_project_name(text: str) -> Optional[str]:
 
     patterns = [
-        r"(?:benefit|benefits|reach|serve|serving|"
-        r"beneficiaries)[^\d]{0,30}([\d,]+)",
-
-        r"([\d,]+)\s*(?:people|persons|beneficiaries|families)"
+        r"^\s*([A-Z][A-Za-z0-9 &'-]+(?:Initiative|Project|Program|Programme))\.",
+        r"^\s*([A-Z][A-Za-z0-9 &'-]+(?:Initiative|Project|Program|Programme))",
     ]
 
     for pattern in patterns:
-
-        match = re.search(
-            pattern,
-            text,
-            re.IGNORECASE
-        )
+        match = re.search(pattern, text)
 
         if match:
-
-            try:
-                return int(
-                    match.group(1).replace(",", "")
-                )
-            except ValueError:
-                pass
+            return clean_text(match.group(1))
 
     return None
 
 
+# =========================================================
+# LOCATION
+# =========================================================
+
 def extract_location(text: str) -> Location:
-    """
-    Extract location using common Indian district/state patterns.
 
-    This is intentionally conservative.
-    """
+    district = None
+    state = None
 
+    # Example:
+    # "in Barmer district of Rajasthan."
+    match = re.search(
+        r"\bin\s+([A-Za-z][A-Za-z .'-]*?)\s+district\s+of\s+([A-Za-z][A-Za-z .'-]*?)(?:[.,]|\s+The\s|\s+the\s|\s+and\s)",
+        text,
+        re.IGNORECASE,
+    )
+
+    if match:
+        district = clean_text(match.group(1))
+        state = clean_text(match.group(2))
+
+    # Fallback district extraction
+    if not district:
+        match = re.search(
+            r"\b([A-Za-z][A-Za-z .'-]*?)\s+district\b",
+            text,
+            re.IGNORECASE,
+        )
+
+        if match:
+            district = clean_text(match.group(1))
+
+    # Explicit state list
     states = [
         "Rajasthan",
-        "Maharashtra",
         "Gujarat",
+        "Maharashtra",
         "Madhya Pradesh",
         "Uttar Pradesh",
         "Bihar",
+        "Jharkhand",
+        "Odisha",
         "West Bengal",
         "Tamil Nadu",
         "Kerala",
         "Karnataka",
         "Telangana",
         "Andhra Pradesh",
-        "Odisha",
-        "Jharkhand",
-        "Chhattisgarh",
         "Punjab",
         "Haryana",
         "Himachal Pradesh",
         "Uttarakhand",
         "Assam",
-        "Meghalaya",
-        "Manipur",
-        "Mizoram",
-        "Nagaland",
-        "Tripura",
-        "Sikkim",
-        "Goa",
-        "Delhi"
+        "Chhattisgarh",
+        "Delhi",
     ]
 
-    state = None
-
-    for candidate in states:
-
+    # Always prefer an exact known state
+    for item in states:
         if re.search(
-            rf"\b{re.escape(candidate)}\b",
+            rf"\b{re.escape(item)}\b",
             text,
-            re.IGNORECASE
+            re.IGNORECASE,
         ):
-            state = candidate
+            state = item
             break
-
-    district = None
-
-    district_match = re.search(
-        r"(?:district|dist\.?)\s*[:\-]?\s*"
-        r"([A-Za-z][A-Za-z\s]{2,40})",
-        text,
-        re.IGNORECASE
-    )
-
-    if district_match:
-        district = (
-            district_match
-            .group(1)
-            .strip()
-        )
-
-        # Remove trailing words
-        district = re.split(
-            r"\b(?:of|in|for|and|the)\b",
-            district,
-            flags=re.IGNORECASE
-        )[0].strip()
 
     return Location(
         district=district,
-        state=state
+        state=state,
     )
 
 
-def extract_project_name(text: str) -> Optional[str]:
-    """
-    Try to identify project title.
-    """
+# =========================================================
+# DURATION
+# =========================================================
+
+def extract_duration(text: str) -> Optional[int]:
+
+    return extract_number(
+        r"(\d+)\s*(?:months?|month)",
+        text,
+    )
+
+
+# =========================================================
+# BENEFICIARIES
+# =========================================================
+
+def extract_beneficiaries(text: str) -> Optional[int]:
 
     patterns = [
-        r"(?:project name|project title)\s*[:\-]\s*(.+)",
-
-        r"^([A-Z][A-Za-z\s\-]{5,80})\s*$"
+        r"benefit\s+(?:approximately\s+)?([\d,]+)\s*(?:people|persons|beneficiaries)",
+        r"beneficiaries?\s*(?:of|:)?\s*([\d,]+)",
+        r"reach\s+(?:approximately\s+)?([\d,]+)\s*(?:people|persons)",
     ]
 
-    lines = [
-        line.strip()
-        for line in text.splitlines()
-        if line.strip()
-    ]
+    for pattern in patterns:
 
-    for line in lines[:10]:
-
-        match = re.match(
-            patterns[0],
-            line,
-            re.IGNORECASE
+        result = extract_number(
+            pattern,
+            text,
         )
 
-        if match:
-            return match.group(1).strip()
-
-    # If the first meaningful line looks like a title
-    if lines:
-
-        first = lines[0]
-
-        if (
-            len(first) <= 100
-            and len(first.split()) <= 12
-        ):
-            return first
+        if result is not None:
+            return result
 
     return None
 
 
-def extract_beneficiary_groups(text: str):
-    """
-    Identify common beneficiary groups.
-    """
+# =========================================================
+# BUDGET
+# =========================================================
 
-    groups = []
-
-    keywords = {
-        "children": [
-            "children",
-            "students",
-            "school children"
-        ],
-
-        "women": [
-            "women",
-            "girls",
-            "female"
-        ],
-
-        "senior citizens": [
-            "elderly",
-            "senior citizens",
-            "older people"
-        ],
-
-        "rural communities": [
-            "rural communities",
-            "rural population",
-            "villages",
-            "rural families"
-        ],
-
-        "persons with disabilities": [
-            "persons with disabilities",
-            "disabled persons",
-            "people with disabilities"
-        ],
-
-        "low-income communities": [
-            "low-income",
-            "low income",
-            "poor families",
-            "economically weaker"
-        ]
-    }
-
-    lower_text = text.lower()
-
-    for group, words in keywords.items():
-
-        if any(word in lower_text for word in words):
-            groups.append(group)
-
-    return groups
-
-
-def extract_intervention(text: str) -> Optional[str]:
-    """
-    Identify the primary intervention using keywords.
-    """
-
-    interventions = {
-
-        "healthcare": [
-            "healthcare",
-            "health care",
-            "medical",
-            "hospital",
-            "clinic",
-            "doctor",
-            "medicine",
-            "screening"
-        ],
-
-        "education": [
-            "education",
-            "school",
-            "students",
-            "learning",
-            "classroom",
-            "digital learning"
-        ],
-
-        "water_sanitation": [
-            "drinking water",
-            "sanitation",
-            "toilet",
-            "water supply",
-            "clean water"
-        ],
-
-        "livelihood": [
-            "livelihood",
-            "employment",
-            "entrepreneurship",
-            "skill training",
-            "vocational"
-        ],
-
-        "environment": [
-            "environment",
-            "tree plantation",
-            "renewable energy",
-            "solar",
-            "waste management",
-            "climate"
-        ],
-
-        "women_empowerment": [
-            "women empowerment",
-            "women's empowerment",
-            "female empowerment"
-        ],
-
-        "sports": [
-            "sports",
-            "athletics",
-            "coaching",
-            "playground"
-        ],
-
-        "disaster_management": [
-            "disaster",
-            "flood relief",
-            "earthquake",
-            "emergency response"
-        ]
-    }
-
-    lower_text = text.lower()
-
-    scores = {}
-
-    for category, words in interventions.items():
-
-        score = 0
-
-        for word in words:
-
-            if word in lower_text:
-                score += 1
-
-        scores[category] = score
-
-    if not scores:
-        return None
-
-    best_category = max(
-        scores,
-        key=scores.get
-    )
-
-    if scores[best_category] == 0:
-        return None
-
-    return best_category
-
-
-def extract_objectives(text: str):
-    """
-    Extract sentences that appear to describe objectives.
-    """
-
-    sentences = re.split(
-        r"(?<=[.!?])\s+",
-        text
-    )
-
-    objectives = []
-
-    keywords = [
-        "aim",
-        "objective",
-        "goal",
-        "provide",
-        "establish",
-        "improve",
-        "increase",
-        "reduce",
-        "support",
-        "enable"
-    ]
-
-    for sentence in sentences:
-
-        lower = sentence.lower()
-
-        if any(
-            keyword in lower
-            for keyword in keywords
-        ):
-
-            sentence = sentence.strip()
-
-            if sentence and len(sentence) > 20:
-                objectives.append(sentence)
-
-    return objectives[:5]
-
-
-def extract_expected_outcomes(text: str):
-    """
-    Extract sentences describing expected outcomes.
-    """
-
-    sentences = re.split(
-        r"(?<=[.!?])\s+",
-        text
-    )
-
-    outcomes = []
-
-    keywords = [
-        "expected",
-        "outcome",
-        "impact",
-        "benefit",
-        "will improve",
-        "will increase",
-        "will reduce",
-        "will provide"
-    ]
-
-    for sentence in sentences:
-
-        lower = sentence.lower()
-
-        if any(
-            keyword in lower
-            for keyword in keywords
-        ):
-
-            sentence = sentence.strip()
-
-            if sentence and len(sentence) > 20:
-                outcomes.append(sentence)
-
-    return outcomes[:5]
-
-
-def extract_implementing_agency(text: str):
-    """
-    Extract implementing agency when explicitly mentioned.
-    """
+def extract_budget(text: str) -> Optional[float]:
 
     patterns = [
-        r"(?:implementing agency|implementation partner)"
-        r"\s*[:\-]\s*(.+)",
+        r"(?:budget|cost|project cost|estimated cost)"
+        r"\s*(?:is|of|:)?\s*₹?\s*([\d,]+(?:\.\d+)?)\s*(?:crore|cr)?",
 
-        r"(?:implemented by|to be implemented by)"
-        r"\s*(.+)"
+        r"₹\s*([\d,]+(?:\.\d+)?)\s*(?:crore|cr|lakh)?",
     ]
 
     for pattern in patterns:
@@ -550,32 +178,266 @@ def extract_implementing_agency(text: str):
         match = re.search(
             pattern,
             text,
-            re.IGNORECASE
+            re.IGNORECASE,
         )
 
         if match:
 
-            value = match.group(1).strip()
+            try:
 
-            value = value.split(".")[0]
+                value = float(
+                    match.group(1).replace(",", "")
+                )
 
-            return value
+                full_match = match.group(0).lower()
+
+                if "crore" in full_match or "cr" in full_match:
+                    value *= 10_000_000
+
+                elif "lakh" in full_match:
+                    value *= 100_000
+
+                return value
+
+            except ValueError:
+                pass
 
     return None
 
 
-# ============================================================
-# MAIN EXTRACTION FUNCTION
-# ============================================================
+# =========================================================
+# BENEFICIARY GROUPS
+# =========================================================
 
-def extract_project_information(
-    text: str
-) -> ProjectAnalysis:
+def extract_beneficiary_groups(text: str):
+
+    groups = []
+
+    keywords = {
+        "senior citizens": [
+            "senior citizens",
+            "elderly",
+            "older people",
+        ],
+        "children": [
+            "children",
+            "students",
+            "kids",
+        ],
+        "women": [
+            "women",
+            "girls",
+        ],
+        "rural communities": [
+            "rural communities",
+            "rural families",
+            "villages",
+        ],
+        "low-income communities": [
+            "low-income",
+            "low income",
+            "poor communities",
+        ],
+        "persons with disabilities": [
+            "persons with disabilities",
+            "people with disabilities",
+            "disabled",
+        ],
+    }
+
+    text_lower = text.lower()
+
+    for group, terms in keywords.items():
+
+        if any(term in text_lower for term in terms):
+            groups.append(group)
+
+    return groups
+
+
+# =========================================================
+# INTERVENTION
+# =========================================================
+
+def extract_intervention(text: str) -> Optional[str]:
+
+    categories = [
+        "healthcare",
+        "education",
+        "livelihood",
+        "women empowerment",
+        "water and sanitation",
+        "environment",
+        "sports",
+        "rural development",
+        "skill development",
+        "disaster management",
+    ]
+
+    text_lower = text.lower()
+
+    for category in categories:
+
+        if category in text_lower:
+            return category
+
+    # Additional healthcare detection
+    if any(
+        word in text_lower
+        for word in [
+            "medical",
+            "doctor",
+            "medicines",
+            "healthcare",
+            "health services",
+        ]
+    ):
+        return "healthcare"
+
+    return None
+
+
+# =========================================================
+# OBJECTIVES
+# =========================================================
+
+def extract_objectives(text: str):
+
+    sentences = re.split(
+        r"(?<=[.!?])\s+",
+        text.strip(),
+    )
+
+    objectives = []
+
+    objective_words = [
+        "provide",
+        "establish",
+        "improve",
+        "increase",
+        "support",
+        "enable",
+        "create",
+        "develop",
+        "reduce",
+        "promote",
+    ]
+
+    for sentence in sentences:
+
+        sentence = clean_text(sentence)
+
+        if not sentence:
+            continue
+
+        lower = sentence.lower()
+
+        if any(
+            word in lower
+            for word in objective_words
+        ):
+            objectives.append(sentence)
+
+    return objectives[:5]
+
+
+# =========================================================
+# EXPECTED OUTCOMES
+# =========================================================
+
+def extract_expected_outcomes(text: str):
+
+    outcomes = []
+
+    # Explicit outcome statements
+    patterns = [
+        r"expected to benefit approximately\s+([\d,]+)\s+(?:people|persons|beneficiaries)",
+        r"expected to\s+([^.]*)",
+        r"outcomes?\s*(?:are|include|:)\s*([^.]*)",
+    ]
+
+    for pattern in patterns:
+
+        matches = re.findall(
+            pattern,
+            text,
+            re.IGNORECASE,
+        )
+
+        for match in matches:
+
+            value = clean_text(match)
+
+            if not value:
+                continue
+
+            # Reconstruct numeric beneficiary outcome
+            if value.replace(",", "").isdigit():
+                value = f"benefit approximately {value} people"
+
+            if len(value) > 5:
+                outcomes.append(value)
+
+    # Remove duplicates
+    unique = []
+
+    for outcome in outcomes:
+        if outcome not in unique:
+            unique.append(outcome)
+
+    return unique[:5]
+
+
+# =========================================================
+# SUMMARY
+# =========================================================
+
+def generate_summary(
+    text: str,
+    project_name: Optional[str],
+    intervention: Optional[str],
+    beneficiaries: Optional[int],
+    location: Location,
+):
+
+    parts = []
+
+    if project_name:
+        parts.append(project_name)
+
+    if intervention:
+        parts.append(
+            f"focuses on {intervention}"
+        )
+
+    if location.district and location.state:
+        parts.append(
+            f"in {location.district}, {location.state}"
+        )
+
+    if beneficiaries:
+        parts.append(
+            f"targeting approximately {beneficiaries:,} beneficiaries"
+        )
+
+    if parts:
+        return "The project " + " ".join(parts) + "."
+
+    return clean_text(text[:500])
+
+
+# =========================================================
+# MAIN EXTRACTION FUNCTION
+# =========================================================
+
+def extract_project_info(text: str) -> ProjectAnalysis:
 
     if not text or not text.strip():
         raise ValueError(
-            "Proposal text cannot be empty."
+            "Project text cannot be empty."
         )
+
+    text = text.strip()
 
     project_name = extract_project_name(text)
 
@@ -587,52 +449,41 @@ def extract_project_information(
 
     beneficiaries = extract_beneficiaries(text)
 
-    beneficiary_groups = (
-        extract_beneficiary_groups(text)
+    beneficiary_groups = extract_beneficiary_groups(
+        text
     )
 
-    intervention = extract_intervention(text)
-
-    objectives = extract_objectives(text)
-
-    expected_outcomes = (
-        extract_expected_outcomes(text)
+    intervention = extract_intervention(
+        text
     )
 
-    implementing_agency = (
-        extract_implementing_agency(text)
+    objectives = extract_objectives(
+        text
     )
 
-    summary = text.strip()
+    expected_outcomes = extract_expected_outcomes(
+        text
+    )
 
-    if len(summary) > 500:
-        summary = summary[:500] + "..."
+    summary = generate_summary(
+        text=text,
+        project_name=project_name,
+        intervention=intervention,
+        beneficiaries=beneficiaries,
+        location=location,
+    )
 
     return ProjectAnalysis(
-
         project_name=project_name,
-
         location=location,
-
         budget=budget,
-
         duration_months=duration,
-
         beneficiaries=beneficiaries,
-
         beneficiary_groups=beneficiary_groups,
-
         intervention=intervention,
-
         objectives=objectives,
-
         expected_outcomes=expected_outcomes,
-
-        implementing_agency=implementing_agency,
-
-        schedule_vii_category=None,
-
-        classification_confidence=0.0,
-
-        summary=summary
+        implementing_agency=None,
+        description=text,
+        summary=summary,
     )

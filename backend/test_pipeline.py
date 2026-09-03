@@ -1,144 +1,187 @@
-from pprint import pprint
-
 from app.ai.pipeline import analyze_proposal
 
 
 def main():
 
+    # =========================================================
+    # SAMPLE CSR PROPOSAL
+    # =========================================================
+
     proposal = """
     Rural Healthcare Initiative
 
-    The project will establish mobile healthcare units
-    to provide free medical checkups, medicines and
-    preventive healthcare services to remote rural
-    communities in Barmer district of Rajasthan.
+    The project will establish mobile healthcare units to provide
+    free medical checkups, medicines and preventive healthcare
+    services to remote rural communities in Barmer district of
+    Rajasthan.
 
-    The program will operate for 24 months and is expected
-    to benefit approximately 12,000 people.
+    The program will operate for 24 months and is expected to
+    benefit approximately 12,000 people.
 
-    Priority beneficiaries include low-income rural families,
-    elderly citizens and people who have limited access to
-    healthcare facilities.
+    Priority beneficiaries include rural families, elderly
+    citizens and people who have limited access to healthcare
+    facilities.
     """
+
+    # =========================================================
+    # COMMUNITY NEEDS
+    # =========================================================
 
     needs = [
 
         {
             "id": 1,
-
             "description":
-                "Remote rural communities have limited "
-                "access to healthcare facilities, doctors "
-                "and essential medical services."
+                "Remote rural communities have limited access to "
+                "healthcare facilities, doctors and essential "
+                "medical services."
         },
 
         {
             "id": 2,
-
             "description":
-                "Children from disadvantaged communities "
-                "lack access to quality education and "
-                "digital learning facilities."
+                "Students from disadvantaged communities need "
+                "better access to education and digital learning "
+                "resources."
         },
 
         {
             "id": 3,
-
             "description":
-                "Rural women need livelihood opportunities, "
-                "entrepreneurship training and financial "
-                "independence."
+                "Rural women require livelihood opportunities "
+                "and entrepreneurship training."
         },
 
         {
             "id": 4,
-
             "description":
-                "Villages lack reliable access to clean "
-                "drinking water and sanitation facilities."
+                "Villages lack reliable access to safe drinking "
+                "water and sanitation infrastructure."
         },
 
         {
             "id": 5,
-
             "description":
-                "Underserved communities require better "
-                "sports infrastructure and coaching."
+                "Underserved communities need access to sports "
+                "facilities and professional coaching."
         }
+
     ]
 
-    print()
-    print("=" * 70)
-    print("IMPACT SPHERE - COMPLETE AI PIPELINE")
-    print("=" * 70)
+    # =========================================================
+    # RUN AI PIPELINE
+    # =========================================================
 
     result = analyze_proposal(
         proposal,
         needs
     )
 
-    print()
-    print("=" * 70)
+    # =========================================================
+    # FINAL ANALYSIS
+    # =========================================================
+
+    print("\n" + "=" * 60)
     print("FINAL ANALYSIS")
-    print("=" * 70)
+    print("=" * 60)
 
-    print()
+    # =========================================================
+    # PROJECT INFORMATION
+    # =========================================================
 
-    print("PROJECT INFORMATION")
-    print("-" * 70)
+    print("\nPROJECT INFORMATION")
+    print("-" * 60)
 
-    pprint(
-        result["project"]
-    )
+    print(result["project"])
 
-    print()
+    # =========================================================
+    # CLASSIFICATION
+    # =========================================================
 
-    print("CLASSIFICATION")
-    print("-" * 70)
+    print("\nCLASSIFICATION")
+    print("-" * 60)
+
+    classification = result["classification"]
 
     print(
         "Category:",
-        result[
-            "classification"
-        ]["category"]
+        classification.get("category")
     )
 
     print(
         "Confidence:",
-        result[
-            "classification"
-        ]["confidence"]
+        classification.get("confidence")
     )
 
     print(
         "Confidence Level:",
-        result[
-            "classification"
-        ]["confidence_level"]
+        classification.get("confidence_level")
     )
 
     print(
         "Human Review Required:",
-        result[
-            "classification"
-        ]["human_review_required"]
+        classification.get("human_review_required")
     )
 
-    print()
+    # =========================================================
+    # NEED MATCHING
+    # =========================================================
 
-    print("TOP NEED MATCH")
-    print("-" * 70)
+    print("\nTOP NEED MATCH")
+    print("-" * 60)
 
-    pprint(
-        result[
-            "need_analysis"
-        ]["top_match"]
+    need_matches = result.get(
+        "need_matches",
+        []
     )
 
-    print()
-    print("=" * 70)
+    if need_matches:
+
+        print(
+            need_matches[0]
+        )
+
+    else:
+
+        print(
+            "No matching community need found."
+        )
+
+    # =========================================================
+    # ALL NEED MATCHES
+    # =========================================================
+
+    print("\nALL NEED MATCHES")
+    print("-" * 60)
+
+    if need_matches:
+
+        for index, match in enumerate(
+            need_matches,
+            start=1
+        ):
+
+            print(
+                f"{index}. "
+                f"{match['description']}"
+            )
+
+            print(
+                f"   Similarity: "
+                f"{match['similarity']}"
+            )
+
+    else:
+
+        print("No matches found.")
+
+    # =========================================================
+    # COMPLETE
+    # =========================================================
+
+    print("\n" + "=" * 60)
     print("PIPELINE COMPLETE")
-    print("=" * 70)
+    print("=" * 60)
 
 
 if __name__ == "__main__":
