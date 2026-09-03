@@ -22,4 +22,7 @@ def evaluate_exclusions(
     if data.statutory_obligation_indicator:
         flags.append("EXCL_STATUTORY_OBLIGATION")
 
+    if data.marketing_sponsorship_indicator:
+        flags.append("EXCL_SPONSORSHIP_MARKETING")
+
     return bool(flags), flags

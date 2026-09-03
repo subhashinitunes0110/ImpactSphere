@@ -16,7 +16,7 @@ router = APIRouter(
 
 
 @router.post(
-    "/evaluate-project",
+    "/check",
     response_model=ComplianceResult,
 )
 def evaluate_project_compliance(
