@@ -1,6 +1,6 @@
 # ImpactSphere
 
-### CSRCompass — Compliance-Aware CSR Fund Allocation & Impact Optimization Platform
+### ImpactSphere
 
 > **Put every CSR rupee where it creates the greatest compliant social impact.**
 
