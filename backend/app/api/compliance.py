@@ -1,13 +1,14 @@
 from fastapi import APIRouter
 
-from app.compliance.calculator import check_csr_applicability
-from app.compliance.engine import evaluate_project
-from app.compliance.schemas import (
+from backend.app.compliance.calculator import check_csr_applicability
+from backend.app.compliance.engine import evaluate_project
+from backend.app.compliance.schemas import (
     CSRCalculationInput,
     CSRCalculationResult,
     ComplianceResult,
     ProjectComplianceInput,
 )
+
 
 router = APIRouter(
     prefix="/compliance",
