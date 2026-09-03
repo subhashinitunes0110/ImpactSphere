@@ -1,9 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+from backend.app.api.compliance import router as compliance_router
 from backend.app.api.impact import router as impact_router
 from backend.app.api.optimization import router as optimization_router
 
-app = FastAPI(title="CSRCompass - Member 3 Decision Engine")
+
+app = FastAPI(title="CSRCompass - Integrated Decision Engine")
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -13,9 +17,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# CSR Compliance Engine
+app.include_router(compliance_router)
+
+# Impact / Need Engine
 app.include_router(impact_router)
+
+# Optimization / What-If Engine
 app.include_router(optimization_router)
+
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "role": "Member 3 (Impact & Optimization)"}
+    return {
+        "status": "ok",
+        "role": "CSRCompass Integrated Decision Engine"
+    }
