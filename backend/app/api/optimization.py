@@ -36,3 +36,16 @@ def run_default_optimization():
         priority="maximum_impact",
         beneficiary_group=None
     )
+from backend.app.optimization.solver import solve_with_ortools
+
+@router.post("/solve-optimal")
+def solve_globally_optimal(req: WhatIfRequest):
+    pool = req.candidate_projects if req.candidate_projects else SAMPLE_20_PROJECTS
+    return solve_with_ortools(
+        projects=pool,
+        budget=req.budget,
+        project_cap=req.project_cap,
+        underserved_min_percent=req.underserved_min_percent,
+        priority=req.priority,
+        beneficiary_group=req.beneficiary_group
+    )
