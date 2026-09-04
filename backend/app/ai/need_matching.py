@@ -6,9 +6,11 @@ from pathlib import Path
 # CONFIGURATION
 # =========================================================
 
-NFHS_FILE = Path(
-    "data/processed/nfhs_district_need.csv"
-)
+# Project root:
+# D:\ImpactSphere
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+NFHS_FILE = PROJECT_ROOT / "data" / "processed" / "nfhs_district_need.csv"
 
 
 # =========================================================

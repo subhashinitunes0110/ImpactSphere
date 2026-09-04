@@ -1,7 +1,7 @@
 from app.ai.extraction import extract_project_info
 from app.ai.classification import classify_project
 from app.ai.confidence import assess_confidence
-from app.ai.embeddings import match_project_to_needs
+from app.ai.need_matching import match_project_to_health_need
 
 
 # =========================================================
@@ -12,7 +12,8 @@ def get_confidence_level(confidence: float) -> str:
     """
     Convert numeric confidence into a readable level.
 
-    These are system thresholds, NOT legal requirements.
+    These thresholds are system thresholds,
+    NOT legal requirements.
     """
 
     if confidence >= 0.80:
@@ -28,21 +29,21 @@ def get_confidence_level(confidence: float) -> str:
 # MAIN AI PIPELINE
 # =========================================================
 
-def analyze_proposal(proposal: str, needs: list):
+def analyze_proposal(proposal: str):
     """
-    Complete Impact Sphere AI pipeline.
+    Complete Impact Sphere AI proposal analysis pipeline.
 
     Flow:
 
-    Proposal Text
+    PDF text
         ↓
     Project Information Extraction
         ↓
-    Classification
+    CSR Classification
         ↓
     Confidence Assessment
         ↓
-    Community Need Matching
+    NFHS Need Analysis
         ↓
     Final Structured Result
     """
@@ -60,11 +61,13 @@ def analyze_proposal(proposal: str, needs: list):
 
     project = extract_project_info(proposal)
 
-    # Convert Pydantic model to dictionary if necessary
+    # Convert Pydantic model to dictionary
     if hasattr(project, "model_dump"):
         project_dict = project.model_dump()
+
     elif hasattr(project, "dict"):
         project_dict = project.dict()
+
     else:
         project_dict = project
 
@@ -78,7 +81,7 @@ def analyze_proposal(proposal: str, needs: list):
 
     classification_result = classify_project(proposal)
 
-    # Make classification robust to different return formats
+    # Support dictionary/object return formats
     if isinstance(classification_result, dict):
 
         category = classification_result.get(
@@ -97,6 +100,7 @@ def analyze_proposal(proposal: str, needs: list):
         )
 
     else:
+
         category = getattr(
             classification_result,
             "category",
@@ -130,8 +134,6 @@ def analyze_proposal(proposal: str, needs: list):
 
     except TypeError:
 
-        # Some versions of confidence.py may expect
-        # the classification result instead.
         confidence_result = assess_confidence(
             classification_result
         )
@@ -210,16 +212,21 @@ def analyze_proposal(proposal: str, needs: list):
     )
 
     # -----------------------------------------------------
-    # STEP 4 — COMMUNITY NEED MATCHING
+    # STEP 4 — NFHS NEED ANALYSIS
     # -----------------------------------------------------
 
     print("\n" + "=" * 60)
-    print("STEP 4/4 - Matching against community needs...")
+    print("STEP 4/4 - Analysing community need...")
     print("=" * 60)
 
-    need_matches = match_project_to_needs(
+    need_analysis = match_project_to_health_need(
         proposal,
-        needs
+        top_k=10
+    )
+
+    print(
+        f"Detected intervention: "
+        f"{need_analysis.get('intervention_type')}"
     )
 
     # -----------------------------------------------------
@@ -248,7 +255,22 @@ def analyze_proposal(proposal: str, needs: list):
                 bool(human_review_required)
         },
 
-        "need_matches": need_matches
+        "need_analysis": {
+
+            "intervention_type":
+                need_analysis.get(
+                    "intervention_type"
+                ),
+
+            "priority_districts":
+                need_analysis.get(
+                    "districts",
+                    []
+                ),
+
+            "data_source":
+                "NFHS-5"
+        }
     }
 
     return result
@@ -276,55 +298,12 @@ if __name__ == "__main__":
     to healthcare facilities.
     """
 
-    needs = [
-
-        {
-            "id": 1,
-            "description":
-                "Remote rural communities have limited "
-                "access to healthcare facilities, doctors "
-                "and essential medical services."
-        },
-
-        {
-            "id": 2,
-            "description":
-                "Students from disadvantaged communities "
-                "need better access to education and "
-                "digital learning resources."
-        },
-
-        {
-            "id": 3,
-            "description":
-                "Rural women require livelihood opportunities "
-                "and entrepreneurship training."
-        },
-
-        {
-            "id": 4,
-            "description":
-                "Villages lack reliable access to safe "
-                "drinking water and sanitation infrastructure."
-        },
-
-        {
-            "id": 5,
-            "description":
-                "Underserved communities need access to "
-                "sports facilities and professional coaching."
-        }
-    ]
-
     print("\n")
     print("=" * 60)
     print("IMPACT SPHERE — AI ANALYSIS")
     print("=" * 60)
 
-    result = analyze_proposal(
-        proposal,
-        needs
-    )
+    result = analyze_proposal(proposal)
 
     print("\n")
     print("=" * 60)
@@ -358,18 +337,26 @@ if __name__ == "__main__":
         result["classification"]["human_review_required"]
     )
 
-    print("\nTOP NEED MATCH")
+    print("\nNFHS NEED ANALYSIS")
     print("-" * 60)
 
-    if result["need_matches"]:
+    print(
+        "Intervention:",
+        result["need_analysis"]["intervention_type"]
+    )
+
+    for index, district in enumerate(
+        result["need_analysis"]["priority_districts"],
+        1
+    ):
 
         print(
-            result["need_matches"][0]
+            f"{index}. "
+            f"{district['district']}, "
+            f"{district['state']} "
+            f"→ Need: "
+            f"{district['health_need_score']}"
         )
-
-    else:
-
-        print("No community needs matched.")
 
     print("\n")
     print("=" * 60)

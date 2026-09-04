@@ -1,87 +1,172 @@
-"""
-Impact Sphere - Regional Social Need Engine
+from pathlib import Path
 
-Calculates a normalized Social Need Index for a region.
-This is a decision-support prototype, not an official government index.
-"""
-
-from typing import Dict
+import pandas as pd
 
 
-# Prototype regional indicators.
-# Later these will come from real public datasets.
-REGIONAL_DATA = {
-    "barmer": {
-        "healthcare": 88,
-        "education": 72,
-        "water_sanitation": 81,
-        "livelihood": 76,
-        "environment": 60,
-        "women_empowerment": 78,
-        "rural_development": 84,
-        "sports": 55,
-        "disaster_management": 50,
-    },
-    "jaipur": {
-        "healthcare": 55,
-        "education": 48,
-        "water_sanitation": 42,
-        "livelihood": 50,
-        "environment": 58,
-        "women_empowerment": 45,
-        "rural_development": 35,
-        "sports": 40,
-        "disaster_management": 30,
-    },
-    "jaisalmer": {
-        "healthcare": 82,
-        "education": 70,
-        "water_sanitation": 86,
-        "livelihood": 80,
-        "environment": 72,
-        "women_empowerment": 74,
-        "rural_development": 88,
-        "sports": 50,
-        "disaster_management": 55,
-    },
-}
+# ============================================================
+# DATASET LOCATION
+# ============================================================
+
+BASE_DIR = Path(__file__).resolve().parents[3]
+
+DATA_PATH = (
+    BASE_DIR
+    / "data"
+    / "processed"
+    / "nfhs_district_need.csv"
+)
 
 
-def normalize_region(region: str) -> str:
-    """Normalize region name for lookup."""
-    if not region:
-        return ""
+# ============================================================
+# LOAD DATA
+# ============================================================
 
-    return region.strip().lower()
+def load_nfhs_data() -> pd.DataFrame:
+
+    if not DATA_PATH.exists():
+        raise FileNotFoundError(
+            f"NFHS dataset not found: {DATA_PATH}"
+        )
+
+    df = pd.read_csv(DATA_PATH)
+
+    required_columns = {
+        "district",
+        "state",
+        "health_need_score",
+        "need_indicators_available",
+    }
+
+    missing = required_columns - set(df.columns)
+
+    if missing:
+        raise ValueError(
+            f"NFHS dataset missing columns: {sorted(missing)}"
+        )
+
+    return df
 
 
-def get_need_index(
+# ============================================================
+# FIND DISTRICT
+# ============================================================
+
+def get_district_need(
     district: str,
-    intervention: str
-) -> float:
-    """
-    Return regional need score from 0-100.
-    Higher score = greater social need.
-    """
+    state: str | None = None,
+) -> dict:
 
-    district_key = normalize_region(district)
-    intervention_key = normalize_region(intervention)
+    if not district or not district.strip():
+        raise ValueError(
+            "District is required."
+        )
 
-    district_data = REGIONAL_DATA.get(district_key)
+    df = load_nfhs_data()
 
-    if not district_data:
-        # Neutral fallback when real data is unavailable.
-        return 50.0
-
-    return float(district_data.get(intervention_key, 50.0))
-
-
-def get_regional_profile(district: str) -> Dict[str, float]:
-    """Return all available indicators for a district."""
-
-    district_key = normalize_region(district)
-
-    return REGIONAL_DATA.get(
-        district_key,
-        {}
+    district_clean = (
+        district.strip()
+        .lower()
     )
+
+    df["_district_clean"] = (
+        df["district"]
+        .astype(str)
+        .str.strip()
+        .str.lower()
+    )
+
+    matches = df[
+        df["_district_clean"] == district_clean
+    ]
+
+    # --------------------------------------------------------
+    # Optional state filtering
+    # --------------------------------------------------------
+
+    if state and not matches.empty:
+
+        state_clean = (
+            state.strip()
+            .lower()
+        )
+
+        matches = matches[
+            matches["state"]
+            .astype(str)
+            .str.strip()
+            .str.lower()
+            == state_clean
+        ]
+
+    # --------------------------------------------------------
+    # No match
+    # --------------------------------------------------------
+
+    if matches.empty:
+
+        return {
+            "found": False,
+            "district": district,
+            "state": state,
+            "health_need_score": None,
+            "need_indicators_available": 0,
+            "message": (
+                "No matching NFHS-5 district record found."
+            ),
+        }
+
+    row = matches.iloc[0]
+
+    return {
+        "found": True,
+        "district": str(row["district"]),
+        "state": str(row["state"]),
+        "health_need_score": round(
+            float(row["health_need_score"]),
+            2,
+        ),
+        "need_indicators_available": int(
+            row["need_indicators_available"]
+        ),
+        "data_source": "NFHS-5",
+        "message": (
+            "District need score retrieved from "
+            "NFHS-5 derived need index."
+        ),
+    }
+
+
+# ============================================================
+# TOP NEED DISTRICTS
+# ============================================================
+
+def get_top_need_districts(
+    top_k: int = 10,
+) -> list:
+
+    df = load_nfhs_data()
+
+    df = df.sort_values(
+        "health_need_score",
+        ascending=False,
+    )
+
+    results = []
+
+    for _, row in df.head(top_k).iterrows():
+
+        results.append(
+            {
+                "district": str(row["district"]),
+                "state": str(row["state"]),
+                "health_need_score": round(
+                    float(row["health_need_score"]),
+                    2,
+                ),
+                "need_indicators_available": int(
+                    row["need_indicators_available"]
+                ),
+            }
+        )
+
+    return results

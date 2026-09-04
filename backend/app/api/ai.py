@@ -1,5 +1,7 @@
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, UploadFile, File
+from pypdf import PdfReader
+from io import BytesIO
+import traceback
 
 from app.ai.pipeline import analyze_proposal
 
@@ -10,93 +12,172 @@ router = APIRouter(
 )
 
 
-# =========================================================
-# REQUEST SCHEMA
-# =========================================================
+# ============================================================
+# PDF TEXT EXTRACTION
+# ============================================================
 
-class AnalyzeRequest(BaseModel):
+def extract_text_from_pdf(file_bytes: bytes) -> str:
 
-    text: str
+    reader = PdfReader(
+        BytesIO(file_bytes)
+    )
 
-    needs: list[dict] = []
+    pages = []
 
+    for page in reader.pages:
 
-# =========================================================
-# DEMO COMMUNITY NEEDS
-# =========================================================
+        text = page.extract_text()
 
-DEFAULT_NEEDS = [
+        if text:
+            pages.append(text)
 
-    {
-        "id": 1,
-        "description":
-            "Remote rural communities have limited access to "
-            "healthcare facilities, doctors and essential medical services."
-    },
+    full_text = "\n".join(pages).strip()
 
-    {
-        "id": 2,
-        "description":
-            "Students from disadvantaged communities need better "
-            "access to education and digital learning resources."
-    },
+    if not full_text:
 
-    {
-        "id": 3,
-        "description":
-            "Rural women require livelihood opportunities and "
-            "entrepreneurship training."
-    },
+        raise ValueError(
+            "No readable text found in PDF."
+        )
 
-    {
-        "id": 4,
-        "description":
-            "Villages lack reliable access to safe drinking water "
-            "and sanitation infrastructure."
-    },
-
-    {
-        "id": 5,
-        "description":
-            "Underserved communities need access to sports facilities "
-            "and professional coaching."
-    }
-
-]
+    return full_text
 
 
-# =========================================================
-# ANALYZE PROPOSAL
-# =========================================================
+# ============================================================
+# ANALYZE PDF
+# ============================================================
 
 @router.post("/analyze")
-def analyze(request: AnalyzeRequest):
+async def analyze(
+    file: UploadFile = File(...)
+):
 
-    if not request.text.strip():
+    print("\n" + "=" * 60)
+    print("CSR PROPOSAL ANALYSIS STARTED")
+    print("=" * 60)
+
+    # --------------------------------------------------------
+    # Validate file
+    # --------------------------------------------------------
+
+    if not file.filename:
 
         raise HTTPException(
             status_code=400,
-            detail="Proposal text cannot be empty."
+            detail="No file selected."
+        )
+
+    if not file.filename.lower().endswith(".pdf"):
+
+        raise HTTPException(
+            status_code=400,
+            detail="Only PDF files are supported."
         )
 
     try:
 
-        needs = (
-            request.needs
-            if request.needs
-            else DEFAULT_NEEDS
+        # ----------------------------------------------------
+        # Read PDF
+        # ----------------------------------------------------
+
+        print("STEP 1/4 - Reading PDF...")
+
+        file_bytes = await file.read()
+
+        if not file_bytes:
+
+            raise ValueError(
+                "Uploaded PDF is empty."
+            )
+
+        print(
+            f"PDF size: {len(file_bytes)} bytes"
+        )
+
+        # ----------------------------------------------------
+        # Extract text
+        # ----------------------------------------------------
+
+        print(
+            "STEP 2/4 - Extracting PDF text..."
+        )
+
+        proposal_text = extract_text_from_pdf(
+            file_bytes
+        )
+
+        print(
+            f"Extracted characters: {len(proposal_text)}"
+        )
+
+        # ----------------------------------------------------
+        # AI analysis
+        # ----------------------------------------------------
+
+        print(
+            "STEP 3/4 - Running AI analysis..."
         )
 
         result = analyze_proposal(
-            request.text,
-            needs
+            proposal_text
         )
+
+        print(
+            "STEP 4/4 - Analysis completed."
+        )
+
+        # ----------------------------------------------------
+        # Add document information
+        # ----------------------------------------------------
+
+        result["document"] = {
+
+            "filename": file.filename,
+
+            "content_type": file.content_type,
+
+            "text_length": len(proposal_text)
+        }
+
+        print("=" * 60)
+        print("SUCCESS - CSR ANALYSIS COMPLETE")
+        print("=" * 60)
 
         return result
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
 
+        # ----------------------------------------------------
+        # PRINT FULL ERROR
+        # ----------------------------------------------------
+
+        print("\n" + "=" * 60)
+        print("!!! AI ANALYSIS ERROR !!!")
+        print("=" * 60)
+
+        print(
+            f"ERROR TYPE: {type(e).__name__}"
+        )
+
+        print(
+            f"ERROR MESSAGE: {str(e)}"
+        )
+
+        print("\nFULL TRACEBACK:")
+
+        traceback.print_exc()
+
+        print("=" * 60)
+
         raise HTTPException(
+
             status_code=500,
-            detail=str(e)
+
+            detail=(
+                f"AI analysis failed: "
+                f"{type(e).__name__}: {str(e)}"
+            )
         )

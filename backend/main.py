@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 
 from app.api.ai import router as ai_router
+from app.api.compliance import router as compliance_router
+from app.api.impact import router as impact_router
 
 
 app = FastAPI(
@@ -21,6 +23,9 @@ app.include_router(
     ai_router
 )
 
+app.include_router(compliance_router)
+app.include_router(impact_router)
+
 
 # ============================================================
 # HEALTH CHECK
@@ -28,7 +33,6 @@ app.include_router(
 
 @app.get("/")
 def root():
-
     return {
         "project": "Impact Sphere",
         "status": "running",
@@ -38,7 +42,6 @@ def root():
 
 @app.get("/health")
 def health():
-
     return {
         "status": "healthy"
     }
