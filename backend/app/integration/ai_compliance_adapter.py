@@ -1,12 +1,11 @@
 from typing import Any, Dict, Optional
 
+from backend.app.schemas.ai import AIAnalysisResponse
 from backend.app.compliance.engine import evaluate_project
 from backend.app.compliance.schemas import (
     ComplianceResult,
-    ComplianceStatus,
     ProjectComplianceInput,
 )
-from backend.app.schemas.ai import AIAnalysisResponse
 
 
 SCHEDULE_VII_MAP = {
@@ -26,8 +25,8 @@ SCHEDULE_VII_MAP = {
 
 
 def _schedule_vii_category(
-    category: str | None,
-) -> str | None:
+    category: Optional[str],
+) -> Optional[str]:
 
     if not category:
         return None
@@ -38,6 +37,32 @@ def _schedule_vii_category(
         return category.strip()
 
     return SCHEDULE_VII_MAP.get(normalized)
+
+
+def _location_value(
+    ai: AIAnalysisResponse,
+    field: str,
+) -> Optional[str]:
+
+    location = ai.project.location
+
+    if hasattr(location, field):
+        value = getattr(location, field, None)
+
+        if value and str(value).strip():
+            return str(value).strip()
+
+        return None
+
+    if isinstance(location, dict):
+        value = location.get(field)
+
+        if value and str(value).strip():
+            return str(value).strip()
+
+        return None
+
+    return None
 
 
 def _description(
@@ -67,68 +92,25 @@ def _description(
     )
 
 
-def _location_value(
-    ai: AIAnalysisResponse,
-    field: str,
-) -> Optional[str]:
-
-    location = ai.project.location
-
-    # Pydantic model
-    if hasattr(location, field):
-
-        value = getattr(
-            location,
-            field,
-            None,
-        )
-
-        if value and str(value).strip():
-            return str(value).strip()
-
-        return None
-
-    # Dictionary fallback
-    if isinstance(location, dict):
-
-        value = location.get(field)
-
-        if value and str(value).strip():
-            return str(value).strip()
-
-        return None
-
-    return None
-
-
 def ai_analysis_to_compliance_input(
     ai: AIAnalysisResponse,
     compliance_context: Optional[Dict[str, Any]] = None,
 ) -> ProjectComplianceInput:
 
+    compliance_context = compliance_context or {}
+
     project = ai.project
-
     classification = ai.classification
-
-    context = compliance_context or {}
 
     project_name = (
         project.project_name
         or "Unnamed AI-analyzed project"
     )
 
-    district = _location_value(
-        ai,
-        "district",
-    )
-
-    state = _location_value(
-        ai,
-        "state",
-    )
+    district = _location_value(ai, "district")
+    state = _location_value(ai, "state")
 
     return ProjectComplianceInput(
-
         project_id=(
             f"AI-{project_name.strip().lower()}"
             .replace(" ", "-")[:60]
@@ -151,88 +133,96 @@ def ai_analysis_to_compliance_input(
         ),
 
         location=district,
-
         district=district,
-
         state=state,
 
-        # -------------------------------------------------
-        # IMPLEMENTING AGENCY
-        # -------------------------------------------------
-
         implementing_agency=(
-            project.implementing_agency
-            or context.get("implementing_agency")
+            compliance_context.get(
+                "implementing_agency"
+            )
+            or project.implementing_agency
         ),
 
-        implementing_agency_type=context.get(
-            "implementing_agency_type"
+        implementing_agency_type=(
+            compliance_context.get(
+                "implementing_agency_type"
+            )
         ),
 
-        implementing_agency_csr_registration_number=context.get(
-            "implementing_agency_csr_registration_number"
+        implementing_agency_csr_registration_number=(
+            compliance_context.get(
+                "implementing_agency_csr_registration_number"
+            )
         ),
 
-        implementing_agency_registered_under_12a=bool(
-            context.get(
+        implementing_agency_registered_under_12a=(
+            compliance_context.get(
                 "implementing_agency_registered_under_12a",
                 False,
             )
         ),
 
-        implementing_agency_registered_under_80g=bool(
-            context.get(
+        implementing_agency_registered_under_80g=(
+            compliance_context.get(
                 "implementing_agency_registered_under_80g",
                 False,
             )
         ),
 
-        implementing_agency_government_established=bool(
-            context.get(
+        implementing_agency_government_established=(
+            compliance_context.get(
                 "implementing_agency_government_established",
                 False,
             )
         ),
 
-        implementing_agency_created_by_statute=bool(
-            context.get(
+        implementing_agency_created_by_statute=(
+            compliance_context.get(
                 "implementing_agency_created_by_statute",
                 False,
             )
         ),
 
-        implementing_agency_has_3_year_track_record=bool(
-            context.get(
+        implementing_agency_has_3_year_track_record=(
+            compliance_context.get(
                 "implementing_agency_has_3_year_track_record",
                 False,
             )
         ),
 
-        # -------------------------------------------------
-        # CSR-1
-        # -------------------------------------------------
-
-        csr1_required=bool(
-            context.get(
+        csr1_required=(
+            compliance_context.get(
                 "csr1_required",
                 True,
             )
         ),
 
-        csr1_filed=bool(
-            context.get(
+        csr1_filed=(
+            compliance_context.get(
                 "csr1_filed",
                 False,
             )
         ),
 
-        # -------------------------------------------------
-        # PROJECT DATA
-        # -------------------------------------------------
+        project_budget=(
+            compliance_context.get(
+                "project_budget"
+            )
+            if compliance_context.get(
+                "project_budget"
+            ) is not None
+            else project.budget
+        ),
 
-        project_budget=project.budget,
-
-        beneficiaries=project.beneficiaries,
+        beneficiaries=(
+            compliance_context.get(
+                "project_beneficiaries"
+            )
+            if compliance_context.get(
+                "project_beneficiaries"
+            ) is not None
+            else project.beneficiaries
+        ),
     )
 
 
@@ -259,20 +249,15 @@ def evaluate_ai_compliance(
         compliance_input
     )
 
-    # -------------------------------------------------
-    # AI CONFIDENCE GATE
-    # -------------------------------------------------
-
     if ai_review_required(ai):
 
-        result.status = ComplianceStatus.REVIEW
+        result.status = "REVIEW"
 
         result.eligible = False
 
         result.eligible_for_optimization = False
 
         if "AI_LOW_CONFIDENCE" not in result.flags:
-
             result.flags.append(
                 "AI_LOW_CONFIDENCE"
             )
@@ -286,54 +271,88 @@ def evaluate_ai_compliance(
 
 
 def compliance_result_to_project(
-    result: ComplianceResult,
+    ai: AIAnalysisResponse,
+    compliance: ComplianceResult,
 ) -> Dict[str, Any]:
 
-    project = dict(
-        result.project
-    )
+    project = ai.project
 
-    # Always provide the keys expected by
-    # downstream Impact / Optimization engines.
-
-    project.setdefault(
+    district = _location_value(
+        ai,
         "district",
-        None,
     )
 
-    project.setdefault(
+    state = _location_value(
+        ai,
         "state",
-        None,
     )
 
-    project["compliance"] = {
+    project_name = (
+        project.project_name
+        or "Unnamed AI-analyzed project"
+    )
 
-        "status": result.status.value,
+    optimization_project = {
+        "id": compliance.project_id,
 
-        "eligible": result.eligible,
+        "name": project_name,
 
-        "eligible_for_optimization": (
-            result.eligible_for_optimization
+        "description": _description(ai),
+
+        "district": district,
+
+        "state": state,
+
+        "location": district,
+
+        "sector": ai.classification.category,
+
+        "beneficiary_group": (
+            ", ".join(project.beneficiary_groups)
+            if project.beneficiary_groups
+            else ""
+        ),
+
+        "beneficiaries": (
+            project.beneficiaries
+            if project.beneficiaries is not None
+            else 0
+        ),
+
+        "budget": (
+            project.budget
+            if project.budget is not None
+            else 0.0
+        ),
+
+        "expected_impact": 75.0,
+
+        "csr_alignment": 80.0,
+
+        "feasibility": 85.0,
+
+        "sustainability": 80.0,
+
+        "compliance": compliance.model_dump(),
+
+        "ai_confidence": (
+            ai.classification.confidence
+        ),
+
+        "ai_confidence_level": (
+            ai.classification.confidence_level
+        ),
+
+        "human_review_required": (
+            ai.classification.human_review_required
         ),
 
         "schedule_vii_category": (
-            result.schedule_vii_category
-        ),
-
-        "schedule_vii_match": (
-            result.schedule_vii_match
-        ),
-
-        "flags": list(
-            result.flags
-        ),
-
-        "reasons": list(
-            result.reasons
+            compliance.schedule_vii_category
         ),
     }
 
-    return project
+    return optimization_project
 
 
 def ai_analysis_to_optimization_project(
@@ -341,11 +360,12 @@ def ai_analysis_to_optimization_project(
     compliance_context: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
 
-    result = evaluate_ai_compliance(
+    compliance = evaluate_ai_compliance(
         ai,
         compliance_context,
     )
 
     return compliance_result_to_project(
-        result
+        ai,
+        compliance,
     )

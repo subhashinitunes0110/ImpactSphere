@@ -1,6 +1,5 @@
-from typing import Any, Dict, List, Optional, Tuple
-
 from ortools.linear_solver import pywraplp
+from typing import List, Dict, Any, Optional, Tuple
 
 from backend.app.impact.scoring import compute_impact_score
 
@@ -8,45 +7,43 @@ from backend.app.impact.scoring import compute_impact_score
 def _compliance_gate(
     project: Dict[str, Any],
 ) -> Tuple[bool, Optional[str]]:
-    """
-    Decide whether a project is eligible for optimization.
 
-    Projects with no compliance metadata are temporarily allowed so that
-    existing demo projects continue to work. Once compliance metadata exists,
-    only PASS + eligible=true projects can enter optimization.
-    """
     compliance = project.get("compliance")
 
-    # Legacy/demo projects do not have compliance metadata yet.
+    # Existing projects without compliance information
+    # are allowed into the optimizer.
     if compliance is None:
         return True, None
 
-    if isinstance(compliance, dict):
-        status = str(
-            compliance.get("status", "")
-        ).upper()
+    # Handle both dictionary and Pydantic-style compliance objects.
+    if hasattr(compliance, "model_dump"):
+        compliance = compliance.model_dump()
 
-        eligible = compliance.get("eligible")
+    if not isinstance(compliance, dict):
+        return False, "Invalid or incomplete CSR compliance result"
 
-        if status == "PASS" and eligible is True:
-            return True, None
+    status = compliance.get("status", "")
+    eligible = compliance.get("eligible")
 
-        if status == "REVIEW":
-            return (
-                False,
-                "Requires human compliance review before optimization",
-            )
+    # Pydantic Enum → string
+    if hasattr(status, "value"):
+        status = status.value
 
-        if status == "REJECT" or eligible is False:
-            return (
-                False,
-                "Rejected by CSR compliance engine",
-            )
+    status = str(status).strip().upper()
 
-    return (
-        False,
-        "Invalid or incomplete CSR compliance result",
-    )
+    if status == "PASS" and eligible is True:
+        return True, None
+
+    if status == "REVIEW":
+        return False, "Requires human compliance review before optimization"
+
+    if status == "REJECT":
+        return False, "Rejected by CSR compliance engine"
+
+    if eligible is False:
+        return False, "Rejected by CSR compliance engine"
+
+    return False, "Invalid or incomplete CSR compliance result"
 
 
 def solve_with_ortools(
@@ -65,12 +62,12 @@ def solve_with_ortools(
             "error": "OR-Tools solver engine not found"
         }
 
-    candidates: List[Dict[str, Any]] = []
-    dropped_reasons: Dict[str, str] = {}
+    candidates = []
+    dropped_reasons = {}
 
-    # =========================================================
-    # COMPLIANCE → OPTIMIZATION GATE
-    # =========================================================
+    # --------------------------------------------------
+    # BUILD CANDIDATES
+    # --------------------------------------------------
 
     for project in projects:
 
@@ -79,35 +76,22 @@ def solve_with_ortools(
         )
 
         if not compliance_ok:
-
-            dropped_reasons[
-                project["id"]
-            ] = (
-                compliance_reason
-                or "Compliance failed"
+            dropped_reasons[project["id"]] = (
+                compliance_reason or "Compliance failed"
             )
-
             continue
-
-        # =====================================================
-        # PROJECT CAP
-        # =====================================================
 
         if project["budget"] > project_cap:
-
-            dropped_reasons[
-                project["id"]
-            ] = (
+            dropped_reasons[project["id"]] = (
                 f"Exceeds cap of ₹{project_cap:,.0f}"
             )
-
             continue
 
-        # =====================================================
-        # IMPACT SCORING
-        # =====================================================
-
         project_copy = project.copy()
+
+        # --------------------------------------------------
+        # IMPACT ENGINE
+        # --------------------------------------------------
 
         score_data = compute_impact_score(
             project_copy,
@@ -115,9 +99,16 @@ def solve_with_ortools(
             beneficiary_group,
         )
 
-        project_copy["score"] = (
-            score_data["impact_score"]
-        )
+        project_copy["score"] = score_data["impact_score"]
+
+        project_copy["impact_metrics"] = {
+            "need_score": score_data["need_score"],
+            "unmet_need": score_data["unmet_need"],
+            "reach_score": score_data["reach_score"],
+            "cost_efficiency": score_data["cost_efficiency"],
+            "impact_score": score_data["impact_score"],
+            "geographic_score": score_data["geographic_score"],
+        }
 
         project_copy["is_underserved"] = (
             score_data["unmet_need"] >= 60.0
@@ -125,19 +116,15 @@ def solve_with_ortools(
 
         candidates.append(project_copy)
 
-    # =========================================================
-    # NO ELIGIBLE CANDIDATES
-    # =========================================================
+    # --------------------------------------------------
+    # NO CANDIDATES
+    # --------------------------------------------------
 
-    n = len(candidates)
-
-    if n == 0:
-
+    if not candidates:
         return {
             "funded_projects": [],
             "not_funded_projects": [
-                project["id"]
-                for project in projects
+                p["id"] for p in projects
             ],
             "budget_allocated": 0.0,
             "remaining_budget": budget,
@@ -146,12 +133,15 @@ def solve_with_ortools(
             "underserved_percent": 0.0,
             "impact_score": 0.0,
             "solver": "Google OR-Tools (SCIP)",
+            "status": "NO_CANDIDATES",
             "reasons": dropped_reasons,
         }
 
-    # =========================================================
-    # BINARY DECISION VARIABLES
-    # =========================================================
+    n = len(candidates)
+
+    # --------------------------------------------------
+    # DECISION VARIABLES
+    # --------------------------------------------------
 
     x = [
         solver.IntVar(
@@ -162,9 +152,9 @@ def solve_with_ortools(
         for i in range(n)
     ]
 
-    # =========================================================
-    # CONSTRAINT 1: TOTAL BUDGET
-    # =========================================================
+    # --------------------------------------------------
+    # BUDGET CONSTRAINT
+    # --------------------------------------------------
 
     solver.Add(
         sum(
@@ -174,13 +164,12 @@ def solve_with_ortools(
         <= budget
     )
 
-    # =========================================================
-    # CONSTRAINT 2: UNDERSERVED QUOTA
-    # =========================================================
+    # --------------------------------------------------
+    # UNDERSERVED CONSTRAINT
+    # --------------------------------------------------
 
     target_underserved = (
-        budget
-        * (underserved_min_percent / 100.0)
+        budget * underserved_min_percent / 100.0
     )
 
     solver.Add(
@@ -192,9 +181,9 @@ def solve_with_ortools(
         >= target_underserved
     )
 
-    # =========================================================
-    # OBJECTIVE: MAXIMUM IMPACT
-    # =========================================================
+    # --------------------------------------------------
+    # OBJECTIVE
+    # --------------------------------------------------
 
     solver.Maximize(
         sum(
@@ -205,20 +194,18 @@ def solve_with_ortools(
 
     status = solver.Solve()
 
-    # =========================================================
-    # HANDLE INFEASIBLE SOLUTION
-    # =========================================================
+    # --------------------------------------------------
+    # SOLVER FAILURE
+    # --------------------------------------------------
 
     if status not in (
         pywraplp.Solver.OPTIMAL,
         pywraplp.Solver.FEASIBLE,
     ):
-
         return {
             "funded_projects": [],
             "not_funded_projects": [
-                project["id"]
-                for project in projects
+                p["id"] for p in projects
             ],
             "budget_allocated": 0.0,
             "remaining_budget": budget,
@@ -227,24 +214,29 @@ def solve_with_ortools(
             "underserved_percent": 0.0,
             "impact_score": 0.0,
             "solver": "Google OR-Tools (SCIP)",
+            "status": "INFEASIBLE",
             "reasons": {
                 **dropped_reasons,
-                "__solver__":
-                    "No feasible optimization solution was found.",
+                "_solver": (
+                    "No feasible allocation satisfies "
+                    "the supplied constraints."
+                ),
             },
         }
 
-    # =========================================================
-    # BUILD RESULT
-    # =========================================================
+    # --------------------------------------------------
+    # COLLECT RESULTS
+    # --------------------------------------------------
 
-    funded_ids: List[str] = []
-
+    funded_ids = []
     allocated_spend = 0.0
-
     underserved_spend = 0.0
+    total_impact = 0.0
+    total_beneficiaries = 0
 
-    reasons: Dict[str, str] = {
+    funded_project_details = []
+
+    reasons = {
         **dropped_reasons
     }
 
@@ -254,53 +246,58 @@ def solve_with_ortools(
 
         if x[i].solution_value() > 0.5:
 
-            project_id = project["id"]
+            pid = project["id"]
 
-            funded_ids.append(
-                project_id
-            )
+            funded_ids.append(pid)
 
-            allocated_spend += (
-                project["budget"]
+            allocated_spend += project["budget"]
+
+            total_beneficiaries += (
+                project.get("beneficiaries", 0) or 0
             )
 
             if project["is_underserved"]:
+                underserved_spend += project["budget"]
 
-                underserved_spend += (
-                    project["budget"]
-                )
+            total_impact += project["score"]
 
-            reasons[project_id] = (
+            reasons[pid] = (
                 "Globally optimal selection: "
-                f"Impact Score {project['score']}"
+                f"Impact Score {project['score']:.2f}"
             )
 
-        else:
+            funded_project_details.append({
+                "id": pid,
+                "name": project.get("name"),
+                "district": project.get("district"),
+                "state": project.get("state"),
+                "sector": project.get("sector"),
+                "budget": project.get("budget", 0.0),
+                "beneficiaries": project.get(
+                    "beneficiaries", 0
+                ),
+                "underserved": project[
+                    "is_underserved"
+                ],
+                "impact_metrics": project[
+                    "impact_metrics"
+                ],
+            })
 
-            reasons[
-                project["id"]
-            ] = (
+        else:
+            reasons[project["id"]] = (
                 "Not selected by linear optimizer"
             )
 
-    # =========================================================
-    # SUMMARY METRICS
-    # =========================================================
+    # --------------------------------------------------
+    # SUMMARY
+    # --------------------------------------------------
 
-    total_beneficiaries = sum(
-        project["beneficiaries"]
-        for project in candidates
-        if project["id"] in funded_ids
-    )
+    projects_funded = len(funded_ids)
 
     avg_impact = (
-        sum(
-            project["score"]
-            for project in candidates
-            if project["id"] in funded_ids
-        )
-        / len(funded_ids)
-        if funded_ids
+        total_impact / projects_funded
+        if projects_funded
         else 0.0
     )
 
@@ -312,36 +309,37 @@ def solve_with_ortools(
         else 0.0
     )
 
+    not_funded_ids = [
+        p["id"]
+        for p in projects
+        if p["id"] not in funded_ids
+    ]
+
+    # --------------------------------------------------
+    # FINAL RESPONSE
+    # --------------------------------------------------
+
     return {
         "funded_projects": funded_ids,
-
-        "not_funded_projects": [
-            project["id"]
-            for project in projects
-            if project["id"] not in funded_ids
-        ],
-
-        "budget_allocated":
-            allocated_spend,
-
-        "remaining_budget":
-            budget - allocated_spend,
-
-        "projects_funded":
-            len(funded_ids),
-
-        "beneficiaries":
-            total_beneficiaries,
-
-        "underserved_percent":
-            round(underserved_pct, 1),
-
-        "impact_score":
-            round(avg_impact, 2),
-
-        "solver":
-            "Google OR-Tools (SCIP)",
-
-        "reasons":
-            reasons,
+        "not_funded_projects": not_funded_ids,
+        "budget_allocated": allocated_spend,
+        "remaining_budget": budget - allocated_spend,
+        "projects_funded": projects_funded,
+        "beneficiaries": total_beneficiaries,
+        "underserved_percent": round(
+            underserved_pct,
+            1,
+        ),
+        "impact_score": round(
+            avg_impact,
+            2,
+        ),
+        "funded_project_details": funded_project_details,
+        "solver": "Google OR-Tools (SCIP)",
+        "status": (
+            "OPTIMAL"
+            if status == pywraplp.Solver.OPTIMAL
+            else "FEASIBLE"
+        ),
+        "reasons": reasons,
     }
