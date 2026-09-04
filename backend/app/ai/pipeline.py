@@ -1,7 +1,7 @@
-from app.ai.extraction import extract_project_info
-from app.ai.classification import classify_project
-from app.ai.confidence import assess_confidence
-from app.ai.embeddings import match_project_to_needs
+from backend.app.ai.extraction import extract_project_info
+from backend.app.ai.classification import classify_project
+from backend.app.ai.confidence import assess_confidence
+from backend.app.ai.embeddings import match_project_to_needs
 
 
 # =========================================================
@@ -60,7 +60,6 @@ def analyze_proposal(proposal: str, needs: list):
 
     project = extract_project_info(proposal)
 
-    # Convert Pydantic model to dictionary if necessary
     if hasattr(project, "model_dump"):
         project_dict = project.model_dump()
     elif hasattr(project, "dict"):
@@ -78,7 +77,6 @@ def analyze_proposal(proposal: str, needs: list):
 
     classification_result = classify_project(proposal)
 
-    # Make classification robust to different return formats
     if isinstance(classification_result, dict):
 
         category = classification_result.get(
@@ -97,6 +95,7 @@ def analyze_proposal(proposal: str, needs: list):
         )
 
     else:
+
         category = getattr(
             classification_result,
             "category",
@@ -130,8 +129,6 @@ def analyze_proposal(proposal: str, needs: list):
 
     except TypeError:
 
-        # Some versions of confidence.py may expect
-        # the classification result instead.
         confidence_result = assess_confidence(
             classification_result
         )
@@ -277,7 +274,6 @@ if __name__ == "__main__":
     """
 
     needs = [
-
         {
             "id": 1,
             "description":
@@ -285,7 +281,6 @@ if __name__ == "__main__":
                 "access to healthcare facilities, doctors "
                 "and essential medical services."
         },
-
         {
             "id": 2,
             "description":
@@ -293,21 +288,18 @@ if __name__ == "__main__":
                 "need better access to education and "
                 "digital learning resources."
         },
-
         {
             "id": 3,
             "description":
                 "Rural women require livelihood opportunities "
                 "and entrepreneurship training."
         },
-
         {
             "id": 4,
             "description":
                 "Villages lack reliable access to safe "
                 "drinking water and sanitation infrastructure."
         },
-
         {
             "id": 5,
             "description":
@@ -316,11 +308,6 @@ if __name__ == "__main__":
         }
     ]
 
-    print("\n")
-    print("=" * 60)
-    print("IMPACT SPHERE — AI ANALYSIS")
-    print("=" * 60)
-
     result = analyze_proposal(
         proposal,
         needs
@@ -328,50 +315,6 @@ if __name__ == "__main__":
 
     print("\n")
     print("=" * 60)
-    print("FINAL ANALYSIS")
+    print("FINAL AI RESULT")
     print("=" * 60)
-
-    print("\nPROJECT INFORMATION")
-    print("-" * 60)
-    print(result["project"])
-
-    print("\nCLASSIFICATION")
-    print("-" * 60)
-
-    print(
-        "Category:",
-        result["classification"]["category"]
-    )
-
-    print(
-        "Confidence:",
-        result["classification"]["confidence"]
-    )
-
-    print(
-        "Confidence Level:",
-        result["classification"]["confidence_level"]
-    )
-
-    print(
-        "Human Review Required:",
-        result["classification"]["human_review_required"]
-    )
-
-    print("\nTOP NEED MATCH")
-    print("-" * 60)
-
-    if result["need_matches"]:
-
-        print(
-            result["need_matches"][0]
-        )
-
-    else:
-
-        print("No community needs matched.")
-
-    print("\n")
-    print("=" * 60)
-    print("PIPELINE COMPLETE")
-    print("=" * 60)
+    print(result)

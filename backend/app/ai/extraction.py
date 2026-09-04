@@ -1,7 +1,7 @@
 import re
 from typing import Optional
 
-from app.schemas.ai import ProjectAnalysis, Location
+from backend.app.schemas.ai import ProjectAnalysis, Location
 
 
 # =========================================================

@@ -1,102 +1,73 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app.ai.pipeline import analyze_proposal
+from backend.app.ai.pipeline import analyze_proposal
 
 
 router = APIRouter(
     prefix="/ai",
-    tags=["AI"]
+    tags=["AI"],
 )
 
 
-# =========================================================
-# REQUEST SCHEMA
-# =========================================================
-
 class AnalyzeRequest(BaseModel):
-
     text: str
-
     needs: list[dict] = []
 
 
-# =========================================================
-# DEMO COMMUNITY NEEDS
-# =========================================================
-
 DEFAULT_NEEDS = [
-
     {
         "id": 1,
-        "description":
-            "Remote rural communities have limited access to "
-            "healthcare facilities, doctors and essential medical services."
+        "description": "Healthcare access for underserved communities",
     },
-
     {
         "id": 2,
-        "description":
-            "Students from disadvantaged communities need better "
-            "access to education and digital learning resources."
+        "description": "Education and learning opportunities",
     },
-
     {
         "id": 3,
-        "description":
-            "Rural women require livelihood opportunities and "
-            "entrepreneurship training."
+        "description": "Skill development and employment",
     },
-
     {
         "id": 4,
-        "description":
-            "Villages lack reliable access to safe drinking water "
-            "and sanitation infrastructure."
+        "description": "Environmental sustainability",
     },
-
     {
         "id": 5,
-        "description":
-            "Underserved communities need access to sports facilities "
-            "and professional coaching."
-    }
-
+        "description": "Rural development",
+    },
+    {
+        "id": 6,
+        "description": "Women empowerment",
+    },
+    {
+        "id": 7,
+        "description": "Disaster management and relief",
+    },
 ]
 
-
-# =========================================================
-# ANALYZE PROPOSAL
-# =========================================================
 
 @router.post("/analyze")
 def analyze(request: AnalyzeRequest):
 
     if not request.text.strip():
-
         raise HTTPException(
             status_code=400,
-            detail="Proposal text cannot be empty."
+            detail="Proposal text cannot be empty.",
         )
 
     try:
-
-        needs = (
-            request.needs
-            if request.needs
-            else DEFAULT_NEEDS
-        )
+        needs = request.needs if request.needs else DEFAULT_NEEDS
 
         result = analyze_proposal(
             request.text,
-            needs
+            needs,
         )
 
         return result
 
-    except Exception as e:
-
+    except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail=str(e)
+            detail=str(exc),
         )
