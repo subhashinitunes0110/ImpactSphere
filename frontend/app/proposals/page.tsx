@@ -1,341 +1,140 @@
 "use client";
 
-import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import Sidebar from "@/components/Sidebar";
 
-const proposals = [
+interface DistrictMetric {
+  district: string;
+  state: string;
+  composite_need: number;
+  saturation_index: number;
+  unmet_need_score: number;
+  category: "High Priority" | "Moderate" | "Saturated";
+}
+
+const DEFAULT_DISTRICTS: DistrictMetric[] = [
   {
-    id: 1,
-    name: "Rural Healthcare Initiative",
-    sector: "Healthcare",
-    location: "District X",
-    budget: "₹50 L",
-    beneficiaries: "12,000",
-    need: 91,
-    impact: 88,
-    efficiency: 82,
-    compliance: "Eligible",
-    recommendation: "Recommended",
+    district: "Kishanganj",
+    state: "Bihar",
+    composite_need: 94,
+    saturation_index: 18,
+    unmet_need_score: 91,
+    category: "High Priority",
   },
   {
-    id: 2,
-    name: "Digital Education Access",
-    sector: "Education",
-    location: "District C",
-    budget: "₹35 L",
-    beneficiaries: "8,500",
-    need: 87,
-    impact: 85,
-    efficiency: 79,
-    compliance: "Eligible",
-    recommendation: "Recommended",
+    district: "Shrawasti",
+    state: "Uttar Pradesh",
+    composite_need: 91,
+    saturation_index: 22,
+    unmet_need_score: 87,
+    category: "High Priority",
   },
   {
-    id: 3,
-    name: "Clean Water Initiative",
-    sector: "Water & Sanitation",
-    location: "District A",
-    budget: "₹42 L",
-    beneficiaries: "7,200",
-    need: 94,
-    impact: 91,
-    efficiency: 86,
-    compliance: "Eligible",
-    recommendation: "Recommended",
+    district: "Nuh",
+    state: "Haryana",
+    composite_need: 86,
+    saturation_index: 31,
+    unmet_need_score: 82,
+    category: "High Priority",
   },
   {
-    id: 4,
-    name: "Women Skill Development",
-    sector: "Livelihood",
-    location: "District D",
-    budget: "₹28 L",
-    beneficiaries: "4,300",
-    need: 82,
-    impact: 79,
-    efficiency: 88,
-    compliance: "Eligible",
-    recommendation: "Review",
+    district: "Barwani",
+    state: "Madhya Pradesh",
+    composite_need: 83,
+    saturation_index: 29,
+    unmet_need_score: 79,
+    category: "Moderate",
   },
   {
-    id: 5,
-    name: "Urban Green Spaces",
-    sector: "Environment",
-    location: "District B",
-    budget: "₹22 L",
-    beneficiaries: "3,100",
-    need: 64,
-    impact: 70,
-    efficiency: 74,
-    compliance: "Eligible",
-    recommendation: "Review",
+    district: "Bengaluru Urban",
+    state: "Karnataka",
+    composite_need: 24,
+    saturation_index: 92,
+    unmet_need_score: 12,
+    category: "Saturated",
+  },
+  {
+    district: "Pune",
+    state: "Maharashtra",
+    composite_need: 28,
+    saturation_index: 88,
+    unmet_need_score: 16,
+    category: "Saturated",
   },
 ];
 
-export default function ProposalsPage() {
-  const [filter, setFilter] = useState("All");
+export default function ImpactMapPage() {
+  const [districts, setDistricts] = useState<DistrictMetric[]>(DEFAULT_DISTRICTS);
 
-  const filteredProposals =
-    filter === "All"
-      ? proposals
-      : proposals.filter((proposal) => proposal.compliance === filter);
+  useEffect(() => {
+    fetch("http://localhost:8000/impact/need-index")
+      .then((res) => {
+        if (!res.ok) throw new Error("API not ready");
+        return res.json();
+      })
+      .then((data) => {
+        if (data?.districts && data.districts.length > 0) {
+          setDistricts(data.districts);
+        }
+      })
+      .catch(() => {
+        // Keeps DEFAULT_DISTRICTS on network/backend fallback
+      });
+  }, []);
 
   return (
-    <main className="min-h-screen bg-[#f7f8fa] text-slate-900">
-
-      {/* HEADER */}
-      <header className="border-b border-slate-200 bg-white px-6 py-5 lg:px-10">
-        <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
-
-          <div>
-            <p className="text-sm text-slate-500">
-              CSR Planning / FY 2026–27
-            </p>
-
-            <h1 className="mt-1 text-2xl font-bold tracking-tight">
-              CSR Proposals
-            </h1>
-
-            <p className="mt-1 text-sm text-slate-500">
-              Review and compare submitted CSR project proposals.
-            </p>
-          </div>
-
-          <button className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800">
-            + Upload Proposal
-          </button>
-
-        </div>
-      </header>
-
-      <div className="px-6 py-8 lg:px-10">
-
-        {/* SUMMARY CARDS */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-
-          <StatCard
-            label="Total Proposals"
-            value="20"
-            description="Received this cycle"
-          />
-
-          <StatCard
-            label="Eligible"
-            value="17"
-            description="Passed compliance"
-          />
-
-          <StatCard
-            label="Recommended"
-            value="7"
-            description="High expected impact"
-          />
-
-          <StatCard
-            label="Needs Review"
-            value="3"
-            description="Requires attention"
-          />
-
+    <div className="flex min-h-screen bg-slate-50 text-slate-900">
+      <Sidebar />
+      <main className="flex-1 p-8 space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold">District Need & Saturation Map</h1>
+          <p className="text-sm text-slate-500">
+            Identifying CSR impact deserts vs. donor-saturated regions
+          </p>
         </div>
 
-        {/* FILTERS */}
-        <div className="mt-8 flex flex-wrap gap-2">
-
-          {["All", "Eligible", "Review"].map((item) => (
-            <button
-              key={item}
-              onClick={() => setFilter(item)}
-              className={`rounded-xl px-4 py-2 text-sm font-medium ${
-                filter === item
-                  ? "bg-slate-900 text-white"
-                  : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-              }`}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {districts.map((d, i) => (
+            <div
+              key={i}
+              className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-4"
             >
-              {item}
-            </button>
+              <div className="flex justify-between items-start">
+                <div>
+                  <h3 className="font-bold text-lg text-slate-900">{d.district}</h3>
+                  <p className="text-xs text-slate-400">{d.state}</p>
+                </div>
+                <span
+                  className={`text-xs px-2.5 py-1 rounded-full font-semibold ${
+                    d.unmet_need_score >= 80
+                      ? "bg-rose-100 text-rose-700"
+                      : d.unmet_need_score >= 50
+                      ? "bg-amber-100 text-amber-700"
+                      : "bg-slate-100 text-slate-600"
+                  }`}
+                >
+                  {d.unmet_need_score >= 80 ? "Impact Desert" : "Donor Saturated"}
+                </span>
+              </div>
+
+              <div className="space-y-2 text-sm pt-2 border-t border-slate-50">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Vulnerability Score:</span>
+                  <span className="font-semibold text-slate-700">{d.composite_need}/100</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">CSR Saturation:</span>
+                  <span className="font-semibold text-slate-700">{d.saturation_index}/100</span>
+                </div>
+                <div className="flex justify-between border-t border-slate-100 pt-2 font-medium">
+                  <span className="text-slate-800">Unmet Need Score:</span>
+                  <span className="font-bold text-blue-600">{d.unmet_need_score}</span>
+                </div>
+              </div>
+            </div>
           ))}
-
         </div>
-
-        {/* PROPOSAL TABLE */}
-        <div className="mt-5 overflow-hidden rounded-3xl border border-slate-200 bg-white">
-
-          <div className="overflow-x-auto">
-
-            <table className="w-full min-w-[1000px] text-left">
-
-              <thead className="border-b border-slate-200 bg-slate-50">
-
-                <tr>
-                  <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Proposal
-                  </th>
-
-                  <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Budget
-                  </th>
-
-                  <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Beneficiaries
-                  </th>
-
-                  <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Need
-                  </th>
-
-                  <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Impact
-                  </th>
-
-                  <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Efficiency
-                  </th>
-
-                  <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Compliance
-                  </th>
-
-                  <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Decision
-                  </th>
-                </tr>
-
-              </thead>
-
-              <tbody className="divide-y divide-slate-100">
-
-                {filteredProposals.map((proposal) => (
-
-                  <tr
-                    key={proposal.id}
-                    className="transition hover:bg-slate-50"
-                  >
-
-                    <td className="px-6 py-5">
-
-                      <p className="font-semibold">
-                        {proposal.name}
-                      </p>
-
-                      <p className="mt-1 text-xs text-slate-500">
-                        {proposal.sector} · {proposal.location}
-                      </p>
-
-                    </td>
-
-                    <td className="px-6 py-5 font-semibold">
-                      {proposal.budget}
-                    </td>
-
-                    <td className="px-6 py-5 text-sm">
-                      {proposal.beneficiaries}
-                    </td>
-
-                    <td className="px-6 py-5">
-                      <Score value={proposal.need} />
-                    </td>
-
-                    <td className="px-6 py-5">
-                      <Score value={proposal.impact} />
-                    </td>
-
-                    <td className="px-6 py-5">
-                      <Score value={proposal.efficiency} />
-                    </td>
-
-                    <td className="px-6 py-5">
-
-                      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                        {proposal.compliance}
-                      </span>
-
-                    </td>
-
-                    <td className="px-6 py-5">
-
-                      <span
-                        className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                          proposal.recommendation === "Recommended"
-                            ? "bg-slate-900 text-white"
-                            : "bg-amber-50 text-amber-700"
-                        }`}
-                      >
-                        {proposal.recommendation}
-                      </span>
-
-                    </td>
-
-                  </tr>
-
-                ))}
-
-              </tbody>
-
-            </table>
-
-          </div>
-
-        </div>
-
-      </div>
-
-    </main>
-  );
-}
-
-
-/* ---------------- COMPONENTS ---------------- */
-
-function StatCard({
-  label,
-  value,
-  description,
-}: {
-  label: string;
-  value: string;
-  description: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5">
-
-      <p className="text-xs font-medium text-slate-500">
-        {label}
-      </p>
-
-      <p className="mt-2 text-2xl font-bold">
-        {value}
-      </p>
-
-      <p className="mt-1 text-xs text-slate-400">
-        {description}
-      </p>
-
-    </div>
-  );
-}
-
-
-function Score({
-  value,
-}: {
-  value: number;
-}) {
-  return (
-    <div className="flex items-center gap-3">
-
-      <span className="w-7 text-sm font-semibold">
-        {value}
-      </span>
-
-      <div className="h-2 w-20 overflow-hidden rounded-full bg-slate-100">
-
-        <div
-          className="h-full rounded-full bg-slate-900"
-          style={{ width: `${value}%` }}
-        />
-
-      </div>
-
+      </main>
     </div>
   );
 }
