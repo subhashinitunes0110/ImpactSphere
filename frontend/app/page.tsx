@@ -1,55 +1,78 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Sidebar from "@/components/Sidebar";
+import { fetchFromAPI } from "@/lib/api";
+import { ProjectProposal } from "@/types/csr";
 
-const projects = [
+const fallbackProjects: ProjectProposal[] = [
   {
+    id: "1",
     name: "Rural Healthcare Initiative",
     sector: "Healthcare",
     location: "District X",
-    budget: "₹50 L",
-    beneficiaries: "12,000",
-    need: 91,
-    impact: 88,
-    efficiency: 82,
+    district: "District X",
+    budget: 5000000,
+    beneficiaries: 12000,
+    needScore: 91,
+    impactScore: 88,
+    efficiencyScore: 82,
     status: "Recommended",
   },
   {
+    id: "2",
     name: "Digital Education Access",
     sector: "Education",
     location: "District C",
-    budget: "₹35 L",
-    beneficiaries: "8,500",
-    need: 87,
-    impact: 85,
-    efficiency: 79,
+    district: "District C",
+    budget: 3500000,
+    beneficiaries: 8500,
+    needScore: 87,
+    impactScore: 85,
+    efficiencyScore: 79,
     status: "Recommended",
   },
   {
+    id: "3",
     name: "Clean Water Infrastructure",
     sector: "Water & Sanitation",
     location: "District Y",
-    budget: "₹45 L",
-    beneficiaries: "15,000",
-    need: 84,
-    impact: 82,
-    efficiency: 85,
+    district: "District Y",
+    budget: 4500000,
+    beneficiaries: 15000,
+    needScore: 84,
+    impactScore: 82,
+    efficiencyScore: 85,
     status: "Recommended",
   },
   {
+    id: "4",
     name: "Solar Micro-Grids",
     sector: "Renewable Energy",
     location: "District Z",
-    budget: "₹60 L",
-    beneficiaries: "6,000",
-    need: 78,
-    impact: 80,
-    efficiency: 75,
+    district: "District Z",
+    budget: 6000000,
+    beneficiaries: 6000,
+    needScore: 78,
+    impactScore: 80,
+    efficiencyScore: 75,
     status: "Under Review",
   },
 ];
 
 export default function DashboardPage() {
+  const [projects, setProjects] = useState<ProjectProposal[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadData() {
+      const data = await fetchFromAPI<ProjectProposal[]>("/api/proposals", fallbackProjects);
+      setProjects(data);
+      setLoading(false);
+    }
+    loadData();
+  }, []);
+
   return (
     <div className="flex min-h-screen bg-slate-50 text-slate-900">
       <Sidebar />
@@ -89,42 +112,54 @@ export default function DashboardPage() {
           <div className="p-5 border-b border-slate-100 font-semibold text-slate-800">
             Top Recommended CSR Projects
           </div>
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 text-slate-500 font-medium">
-              <tr>
-                <th className="p-4">Project</th>
-                <th className="p-4">Sector</th>
-                <th className="p-4">Location</th>
-                <th className="p-4">Budget</th>
-                <th className="p-4">Beneficiaries</th>
-                <th className="p-4">Impact</th>
-                <th className="p-4">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {projects.map((proj, idx) => (
-                <tr key={idx} className="hover:bg-slate-50/80">
-                  <td className="p-4 font-medium text-slate-900">{proj.name}</td>
-                  <td className="p-4 text-slate-600">{proj.sector}</td>
-                  <td className="p-4 text-slate-600">{proj.location}</td>
-                  <td className="p-4 font-semibold text-slate-900">{proj.budget}</td>
-                  <td className="p-4 text-slate-600">{proj.beneficiaries}</td>
-                  <td className="p-4 font-bold text-emerald-600">{proj.impact}</td>
-                  <td className="p-4">
-                    <span
-                      className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-                        proj.status === "Recommended"
-                          ? "bg-blue-50 text-blue-700"
-                          : "bg-amber-50 text-amber-700"
-                      }`}
-                    >
-                      {proj.status}
-                    </span>
-                  </td>
+
+          {loading ? (
+            <div className="p-8 space-y-4 animate-pulse">
+              <div className="h-6 bg-slate-200 rounded w-1/3"></div>
+              <div className="h-6 bg-slate-100 rounded w-full"></div>
+              <div className="h-6 bg-slate-100 rounded w-full"></div>
+              <div className="h-6 bg-slate-100 rounded w-full"></div>
+            </div>
+          ) : (
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50 text-slate-500 font-medium">
+                <tr>
+                  <th className="p-4">Project</th>
+                  <th className="p-4">Sector</th>
+                  <th className="p-4">Location</th>
+                  <th className="p-4">Budget</th>
+                  <th className="p-4">Beneficiaries</th>
+                  <th className="p-4">Impact</th>
+                  <th className="p-4">Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {projects.map((proj) => (
+                  <tr key={proj.id} className="hover:bg-slate-50/80">
+                    <td className="p-4 font-medium text-slate-900">{proj.name}</td>
+                    <td className="p-4 text-slate-600">{proj.sector}</td>
+                    <td className="p-4 text-slate-600">{proj.location}</td>
+                    <td className="p-4 font-semibold text-slate-900">
+                      ₹{(proj.budget / 100000).toFixed(0)} L
+                    </td>
+                    <td className="p-4 text-slate-600">{proj.beneficiaries.toLocaleString()}</td>
+                    <td className="p-4 font-bold text-emerald-600">{proj.impactScore}</td>
+                    <td className="p-4">
+                      <span
+                        className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                          proj.status === "Recommended"
+                            ? "bg-blue-50 text-blue-700"
+                            : "bg-amber-50 text-amber-700"
+                        }`}
+                      >
+                        {proj.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </section>
       </main>
     </div>
