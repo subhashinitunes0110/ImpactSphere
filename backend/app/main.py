@@ -3,7 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.api.ai import router as ai_router
 from backend.app.api.integration import router as integration_router
-
 from backend.app.api.compliance import router as compliance_router
 from backend.app.api.impact import router as impact_router
 from backend.app.api.optimization import router as optimization_router
