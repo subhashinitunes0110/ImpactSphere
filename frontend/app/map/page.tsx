@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Sidebar from "@/components/Sidebar";
 
 const projects = [
@@ -66,6 +67,7 @@ export default function DashboardPage() {
           </span>
         </header>
 
+        {/* Quick KPI Stat Cards */}
         <section className="grid grid-cols-1 sm:grid-cols-4 gap-4">
           <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
             <p className="text-xs text-slate-500 uppercase tracking-wider">Mandatory CSR Budget</p>
@@ -85,6 +87,7 @@ export default function DashboardPage() {
           </div>
         </section>
 
+        {/* Active Projects Table */}
         <section className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
           <div className="p-5 border-b border-slate-100 font-semibold text-slate-800">
             Top Recommended CSR Projects
