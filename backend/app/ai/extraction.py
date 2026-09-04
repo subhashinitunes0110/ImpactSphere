@@ -772,5 +772,6 @@ def extract_project_information(
     )
 
 
-# Backward-compatible alias
+# Backward-compatible aliases used by the AI pipeline
+extract_project_info = extract_project_information
 extract_project_data = extract_project_information

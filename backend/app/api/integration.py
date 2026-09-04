@@ -12,6 +12,7 @@ from backend.app.integration.ai_compliance_adapter import (
 from backend.app.schemas.ai import AIAnalysisResponse
 from backend.app.optimization.solver import solve_with_ortools
 
+
 router = APIRouter(
     prefix="/integration",
     tags=["AI → Compliance → Optimization"],
@@ -22,7 +23,6 @@ class IntegratedOptimizationRequest(BaseModel):
     text: str
     needs: list[dict] = Field(default_factory=list)
 
-    # Implementing agency
     implementing_agency: str | None = None
     implementing_agency_type: str | None = None
     implementing_agency_csr_registration_number: str | None = None
@@ -33,22 +33,16 @@ class IntegratedOptimizationRequest(BaseModel):
     implementing_agency_created_by_statute: bool = False
     implementing_agency_has_3_year_track_record: bool = False
 
-    # CSR-1
     csr1_required: bool = True
     csr1_filed: bool = False
 
-    # Company-level optimization budget
     budget: float = Field(default=50000000.0, ge=0)
-
-    # Proposed project budget
     project_budget: float | None = Field(default=None, ge=0)
-
-    # Proposed project beneficiaries
     project_beneficiaries: int | None = Field(default=None, ge=0)
 
-    # Optimization configuration
     project_cap: float = Field(default=7500000.0, ge=0)
-    underserved_min_percent: float = Field(default=20.0, ge=0, le=100)
+    underserved_min_percent: float = Field(default=20.0, ge=0)
+
     priority: str = "maximum_impact"
     beneficiary_group: str | None = None
 
@@ -56,48 +50,44 @@ class IntegratedOptimizationRequest(BaseModel):
 def _compliance_context(
     payload: IntegratedOptimizationRequest,
 ) -> Dict[str, Any]:
-
     return {
         "implementing_agency": payload.implementing_agency,
         "implementing_agency_type": payload.implementing_agency_type,
-        "implementing_agency_csr_registration_number": (
-            payload.implementing_agency_csr_registration_number
-        ),
-        "implementing_agency_registered_under_12a": (
-            payload.implementing_agency_registered_under_12a
-        ),
-        "implementing_agency_registered_under_80g": (
-            payload.implementing_agency_registered_under_80g
-        ),
-        "implementing_agency_government_established": (
-            payload.implementing_agency_government_established
-        ),
-        "implementing_agency_created_by_statute": (
-            payload.implementing_agency_created_by_statute
-        ),
-        "implementing_agency_has_3_year_track_record": (
-            payload.implementing_agency_has_3_year_track_record
-        ),
+        "implementing_agency_csr_registration_number":
+            payload.implementing_agency_csr_registration_number,
+        "implementing_agency_registered_under_12a":
+            payload.implementing_agency_registered_under_12a,
+        "implementing_agency_registered_under_80g":
+            payload.implementing_agency_registered_under_80g,
+        "implementing_agency_government_established":
+            payload.implementing_agency_government_established,
+        "implementing_agency_created_by_statute":
+            payload.implementing_agency_created_by_statute,
+        "implementing_agency_has_3_year_track_record":
+            payload.implementing_agency_has_3_year_track_record,
         "csr1_required": payload.csr1_required,
         "csr1_filed": payload.csr1_filed,
     }
 
 
-@router.post(
-    "/ai-compliance",
-    response_model=ComplianceResult,
-)
+@router.post("/ai-compliance")
 def check_ai_analysis(
     analysis: AIAnalysisResponse,
 ) -> ComplianceResult:
-
     return evaluate_ai_compliance(analysis)
 
 
 @router.post("/analyze-and-check")
 def analyze_and_check(
     payload: Dict[str, Any],
-) -> ComplianceResult:
+) -> Dict[str, Any]:
+    """
+    Full AI → Compliance pipeline.
+
+    Returns both:
+    1. AI analysis
+    2. Deterministic CSR compliance result
+    """
 
     text = str(payload.get("text", "")).strip()
     needs = payload.get("needs") or []
@@ -109,16 +99,27 @@ def analyze_and_check(
         )
 
     try:
+        # STEP 1:
+        # AI extracts project information, classifies the project,
+        # and matches community needs.
         ai_result = analyze_proposal(text, needs)
 
-        analysis = AIAnalysisResponse.model_validate(
-            ai_result
-        )
+        analysis = AIAnalysisResponse.model_validate(ai_result)
 
-        return evaluate_ai_compliance(
+        # STEP 2:
+        # Deterministic compliance engine validates the AI result.
+        compliance = evaluate_ai_compliance(
             analysis,
             payload,
         )
+
+        # IMPORTANT:
+        # Frontend expects BOTH ai_analysis and compliance.
+        return {
+            "success": True,
+            "ai_analysis": analysis.model_dump(),
+            "compliance": compliance.model_dump(),
+        }
 
     except HTTPException:
         raise
@@ -135,7 +136,7 @@ def analyze_for_optimization(
     payload: Dict[str, Any],
 ) -> Dict[str, Any]:
 
-    text = str(payload.get("text") or payload.get("proposal_text") or "").strip()
+    text = str(payload.get("text", "")).strip()
     needs = payload.get("needs") or []
 
     if not text:
@@ -156,7 +157,6 @@ def analyze_for_optimization(
             payload,
         )
 
-        # Explicit request values override AI extraction
         if payload.get("project_budget") is not None:
             project["budget"] = payload["project_budget"]
 
@@ -194,11 +194,9 @@ def optimize_proposal(
         )
 
     try:
-
-        # =========================================================
-        # 1. AI ANALYSIS
-        # =========================================================
-
+        # ---------------------------------------------------------
+        # STEP 1 — AI ANALYSIS
+        # ---------------------------------------------------------
         ai_result = analyze_proposal(
             text,
             payload.needs,
@@ -208,10 +206,9 @@ def optimize_proposal(
             ai_result
         )
 
-        # =========================================================
-        # 2. CSR COMPLIANCE
-        # =========================================================
-
+        # ---------------------------------------------------------
+        # STEP 2 — COMPLIANCE
+        # ---------------------------------------------------------
         context = _compliance_context(payload)
 
         compliance = evaluate_ai_compliance(
@@ -219,9 +216,10 @@ def optimize_proposal(
             context,
         )
 
-        # Compliance must pass before optimization
+        # ---------------------------------------------------------
+        # STEP 3 — COMPLIANCE GATE
+        # ---------------------------------------------------------
         if not compliance.eligible_for_optimization:
-
             return {
                 "success": True,
                 "stage": "COMPLIANCE_REVIEW",
@@ -234,16 +232,14 @@ def optimize_proposal(
                 "optimization": None,
             }
 
-        # =========================================================
-        # 3. CONVERT AI PROJECT → OPTIMIZATION PROJECT
-        # =========================================================
-
+        # ---------------------------------------------------------
+        # STEP 4 — CONVERT TO OPTIMIZATION PROJECT
+        # ---------------------------------------------------------
         project = ai_analysis_to_optimization_project(
             analysis,
             context,
         )
 
-        # Explicit request values take priority over AI extraction
         if payload.project_budget is not None:
             project["budget"] = payload.project_budget
 
@@ -252,28 +248,19 @@ def optimize_proposal(
                 payload.project_beneficiaries
             )
 
-        # Safe defaults
-        project["budget"] = project.get("budget") or 0.0
+        project["budget"] = project.get(
+            "budget",
+            0.0,
+        ) or 0.0
 
-        project["beneficiaries"] = (
-            project.get("beneficiaries") or 0
-        )
+        project["beneficiaries"] = project.get(
+            "beneficiaries",
+            0,
+        ) or 0
 
-        # =========================================================
-        # 4. PROJECT-LEVEL OPTIMIZATION
-        # =========================================================
-        #
-        # This endpoint evaluates ONE proposal.
-        #
-        # The portfolio-level underserved constraint is disabled
-        # here because a single project cannot satisfy a percentage
-        # requirement over an entire CSR portfolio.
-        #
-        # The full portfolio optimizer continues to enforce that
-        # constraint through /optimization/solve-optimal.
-        #
-        # =========================================================
-
+        # ---------------------------------------------------------
+        # STEP 5 — OR-TOOLS OPTIMIZATION
+        # ---------------------------------------------------------
         optimization = solve_with_ortools(
             projects=[project],
             budget=payload.budget,
@@ -283,10 +270,9 @@ def optimize_proposal(
             beneficiary_group=payload.beneficiary_group,
         )
 
-        # =========================================================
-        # 5. FINAL RESPONSE
-        # =========================================================
-
+        # ---------------------------------------------------------
+        # STEP 6 — COMPLETE RESPONSE
+        # ---------------------------------------------------------
         return {
             "success": True,
             "stage": "OPTIMIZED",
@@ -300,7 +286,6 @@ def optimize_proposal(
         raise
 
     except Exception as exc:
-
         raise HTTPException(
             status_code=500,
             detail=str(exc),
