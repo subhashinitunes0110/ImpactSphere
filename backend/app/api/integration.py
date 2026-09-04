@@ -135,7 +135,7 @@ def analyze_for_optimization(
     payload: Dict[str, Any],
 ) -> Dict[str, Any]:
 
-    text = str(payload.get("text", "")).strip()
+    text = str(payload.get("text") or payload.get("proposal_text") or "").strip()
     needs = payload.get("needs") or []
 
     if not text:
